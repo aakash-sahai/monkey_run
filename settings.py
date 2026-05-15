@@ -1,6 +1,6 @@
 # Game Settings
-SCREEN_WIDTH = 800
-SCREEN_HEIGHT = 600
+SCREEN_WIDTH = 1600
+SCREEN_HEIGHT = 1000
 FPS = 60
 
 # Physics
@@ -9,42 +9,33 @@ JUMP_STRENGTH = -16
 PLAYER_SPEED = 5
 
 MONKEY_HEIGHT = 70
-MONKEY_COLOR = 'magenta'
+MONKEY_COLOR = 'orange'
+
 # Game Balance
 STARTING_ENERGY = 100
-ENERGY_DRAIN_RATE = 0.02  # How fast energy drops per frame
-FOOD_RECOVERY = 20        # Energy gained from food
+ENERGY_DRAIN_RATE = 0.02  
+FOOD_RECOVERY = 25
 
 HAZARD_SIZE = 40
-HAZARD_COLOR = (255, 0, 0)      # Red
-HAZARD_DAMAGE_RATE = 1.5        # How much energy is lost per frame of contact
+HAZARD_COLOR = (255, 0, 0)      
+HAZARD_DAMAGE_RATE = 2
 
 # --- Platform Settings ---
 PLATFORM_DEFAULT_HEIGHT = 20
-PLATFORM_COLOR = (100, 100, 100)  # Gray
+PLATFORM_COLOR = (0, 100, 0)
 
-# --- Level Design ---
-# Format: (x, y, width)
-PLATFORM_LIST = [
-    (100, 450, 200),  # Ledge 1: Low left
-    (400, 320, 150),  # Ledge 2: Middle center
-    (150, 200, 120),  # Ledge 3: High left
-    (600, 400, 180)   # Ledge 4: Mid right
+# --- NEW LEVEL DESIGN (TILEMAP) ---
+TILE_SIZE = 64
+
+# X = Platform, H = Hazard, D = Diamond, F = Food, P = Player Start
+# Each line is a row. Space = empty air.
+LEVEL_MAP = [
+    '                                                ',
+    '    D         D               D                 ',
+    '  XXXXX H    XXXXX           XXXXX         HD   ',
+    '         F            H               F    XXXX ',
+    '       XXXX         XXXXX           XXXX        ',
+    '                                                ',
+    '    P        D              H             D     ',
+    'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
 ]
-
-DIAMOND_POSITIONS = [(150, 160), (450, 280), (700, 500)]
-HAZARD_POSITIONS = [(300, 420), (550, 380), (100, 250)]
-
-# --- Food Placement Settings ---
-# Format: (platform_index, offset_x)
-# platform_index refers to the index in your PLATFORM_LIST
-# offset_x is how far to the left (negative) or right (positive) of the ledge
-LEDGE_FOOD_DATA = [
-    (0, -40),  # To the left of the first ledge
-    (0, 240),  # To the right of the first ledge
-    (1, -30),  # To the left of the second ledge
-    (2, 130)   # To the right of the high ledge
-]
-
-PLAYER_START_X = SCREEN_WIDTH // 2
-PLAYER_START_Y = SCREEN_HEIGHT - MONKEY_HEIGHT 
