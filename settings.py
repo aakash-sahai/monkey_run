@@ -20,22 +20,49 @@ HAZARD_SIZE = 40
 HAZARD_COLOR = (255, 0, 0)      
 HAZARD_DAMAGE_RATE = 2
 
+# Water Gun Settings
+WATER_SPEED = 12
+
 # --- Platform Settings ---
 PLATFORM_DEFAULT_HEIGHT = 20
 PLATFORM_COLOR = (0, 100, 0)
 
-# --- NEW LEVEL DESIGN (TILEMAP) ---
+# --- LEVEL DESIGNS (TILEMAPS) ---
 TILE_SIZE = 64
 
-# X = Platform, H = Hazard, D = Diamond, F = Food, P = Player Start
-# Each line is a row. Space = empty air.
-LEVEL_MAP = [
-    '                                                ',
-    '    D         D               D                 ',
-    '  XXXXX H    XXXXX           XXXXX         HD   ',
-    '         F            H               F    XXXX ',
-    '       XXXX         XXXXX           XXXX        ',
-    '                                                ',
-    '    P        D              H             D     ',
-    'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
-]
+# D = Diamonds F = Food H = Hazard P = Player Start X = Platform W = Water Gun G= Golem
+LEVEL_MAPS = [
+    # --- LEVEL 1 ---
+    [
+        '                                                                          ',
+        '    D         D               D                      HD               F   ',
+        '  XXXXX H    XXXXX           XXXXX         HD       XXXX      H     XXXXX ',
+        '         F            H               F    XXXX              XXXXX        ',
+        '       XXXX         XXXXX           XXXX                 XXXX             ',
+        '                                   H     H                                ',
+        '    P        D       F      H             D          H         D     F    ',
+        'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+    ],
+    # --- LEVEL 2 ---
+    [
+        '                                                                          ',
+        '    D         F               H                      HD               D   ',
+        '  XXXXX      XXXX           XXXXX          F        XXXX      H     XXXXX ',
+        '         H            W               H    XXXX              XXXXX        ',
+        '       XXXX         XXXXX           XXXX                 XXXX             ',
+        '  W                                H     H                         H      ',
+        '  PFFFH      D       F      H       W   D          H     W   F      D     ',
+        'XXXXXXXXXXXXXXXX   XXXXX   XXXXXXXXXXXXXXXXXXXXX   XXXXXXXXXXXXXXXXXXXXXXX',
+    ],
+    # --- LEVEL 3 ---
+    [
+        '                                                                          ',                     
+        '                                   XXXXXXXXX                              ',
+        '             F               HF                     HD               D    ',
+        '            XXXX           XXXXX             G     XXX        H  F  XXXXX ',
+        '         H            G               H    XXXX          G     XXXXX      ',
+        '       XXXX         XXXXX           XXXX                 XXXX             ',
+        '   P    D  W         H       W F D    G  F  H      W   F      D G         ',
+        'XXXXXXXXXXXXXXXX   XXXXX   XXXXXXXXXXXXXXXXXXXXX   XXXXXXXXXXXXXXXXXXXXXXX',
+    ]
+    ]

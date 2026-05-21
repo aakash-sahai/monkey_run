@@ -5,7 +5,7 @@ from turtle import pos
 import pygame
 import sys
 from settings import *
-from entities import Diamond, Food, Hazard, Player, Platform
+from entities import Diamond, Food, Hazard, Player, Platform, WaterGunItem, Golem
 
 class Camera:
     def __init__(self, width, height):
@@ -40,21 +40,47 @@ class Game:
         pygame.font.init() 
         self.font = pygame.font.SysFont('Arial', 30, bold=True)
 
-        # 1. Initialize Groups
+        # Track the active level index (0 = Level 1, 1 = Level 2)
+        self.current_level = 0
+        self.diamond_count = 0 
+        self.game_active = True
+        self.game_over_reason = ""
+
+        # Initialize Groups
         self.hazard_group = pygame.sprite.Group() 
         self.diamond_group = pygame.sprite.Group() 
         self.food_group = pygame.sprite.Group()
         self.platform_group = pygame.sprite.Group()
         self.player_group = pygame.sprite.GroupSingle()
-        self.diamond_count = 0 
-        print("2. Groups and Player initialized")
+        self.water_group = pygame.sprite.Group()
+        self.water_gun_group = pygame.sprite.Group()
+        self.golem_group = pygame.sprite.Group()
+        self.fireball_group = pygame.sprite.Group()
 
-        # 2. Create the Player object
+        # Create the Player object
         self.monkey = Player() 
         self.player_group.add(self.monkey)
 
-        # 3. THE MASTER LOOP
-        for row_index, row in enumerate(LEVEL_MAP):
+        # Load the first level map layout
+        self.load_level()
+        print("4. Init finished successfully")
+
+    def load_level(self):
+        # Clear out all old sprites from the previous level
+        self.hazard_group.empty()
+        self.diamond_group.empty()
+        self.food_group.empty()
+        self.platform_group.empty()
+        self.water_group.empty()
+        self.water_gun_group.empty()
+        self.golem_group.empty()      
+        self.fireball_group.empty()
+
+        # Grab the specific map structure from our settings list
+        current_map_layout = LEVEL_MAPS[self.current_level]
+
+        # THE MASTER LOOP (Modified to read our new current_map_layout)
+        for row_index, row in enumerate(current_map_layout):
             for col_index, cell in enumerate(row):
                 x = col_index * TILE_SIZE
                 y = row_index * TILE_SIZE
@@ -67,19 +93,30 @@ class Game:
                     self.diamond_group.add(Diamond(x, y))
                 elif cell == 'F':
                     self.food_group.add(Food(x, y))
+                elif cell == 'W':
+                    print(f"SPAWNING WATER GUN AT: {x}, {y}") 
+                    self.water_gun_group.add(WaterGunItem(x, y))
+                elif cell == 'G':
+                    print(f"SPAWNING GOLEM AT: {x}, {y}")
+                    self.golem_group.add(Golem(x, y - 6)) 
                 elif cell == 'P':
                     self.monkey.rect.topleft = (x, y)
+                    self.monkey.direction.y = 0  
+                    if hasattr(self.monkey, 'pos_x'):
+                        self.monkey.pos_x = float(self.monkey.rect.x)
                     if hasattr(self.monkey, 'pos_y'):
                         self.monkey.pos_y = float(self.monkey.rect.y)
-            print("3. Level Map loaded")
 
-        # 4. Set up the Camera
-        level_width = len(LEVEL_MAP[0]) * TILE_SIZE
-        level_height = len(LEVEL_MAP) * TILE_SIZE
+        # Set up or recalculate the Camera boundaries for this level size
+        level_width = len(current_map_layout[0]) * TILE_SIZE
+        level_height = len(current_map_layout) * TILE_SIZE
         self.camera = Camera(level_width, level_height)
         
+        # Reset monkey stats for the new level
+        self.monkey.energy = 100       
+        self.water_group.empty()       
         self.game_active = True
-        print("4. Init finished successfully")
+        print(f"4. Level {self.current_level + 1} loaded successfully")
 
     def check_collisions(self):
         # 1. Check if monkey hits anything in the food group
@@ -103,6 +140,18 @@ class Game:
         if self.monkey.energy <= 0:
             self.monkey.energy = 0
             self.game_active = False
+
+        # --- Water Gun Item Pickup ---
+        gun_hit = pygame.sprite.spritecollide(self.player_group.sprite, self.water_gun_group, True)
+        if gun_hit:
+            print("Water gun equipped! 3 shots loaded.")
+            self.monkey.water_ammo += 3  # Add 3 shots per item collected
+
+        # --- Water Droplet Extinguishing Fire Hazards ---
+        # True, True means BOTH the water droplet and the fire hazard will get deleted on contact!
+        extinguish_hits = pygame.sprite.groupcollide(self.water_group, self.hazard_group, True, True)
+        if extinguish_hits:
+            print("Sizzle! Fire extinguished!")
 
 # --- Hazard Collision ---
         if pygame.sprite.spritecollide(self.player_group.sprite, self.hazard_group, False):
@@ -137,8 +186,99 @@ class Game:
                 self.monkey.rect.top = hits[0].rect.bottom
                 # Stop upward momentum (starts falling immediately)
                 self.monkey.direction.y = 0
-                self.monkey.pos_y = float(self.monkey.rect.y)   
+                self.monkey.pos_y = float(self.monkey.rect.y) 
+        if pygame.sprite.spritecollide(self.player_group.sprite, self.fireball_group, True):
+            print("Ouch! Hit by a fireball!")
+            self.monkey.energy -= 15  # Take damage from fireballs
+
+        # --- Water Droplet vs Fireball (Water puts out fire) ---
+        pygame.sprite.groupcollide(self.water_group, self.fireball_group, True, True)
+        
+        # --- Check for Level Completion ---
+        # Calculate where the map ends horizontally
+        current_map_layout = LEVEL_MAPS[self.current_level]
+        level_right_edge = len(current_map_layout[0]) * TILE_SIZE
+
+        if self.monkey.rect.right >= level_right_edge:
+            # Check if there is a next level BEFORE changing the counter
+            if self.current_level + 1 < len(LEVEL_MAPS):
+                self.current_level += 1
+                print(f"Heading into Level {self.current_level + 1}!")
+                self.load_level()
+            else:
+                print("Victory! You completed the migration!")
+                self.game_active = False
+        
+        # --- Check if Monkey Fell Off the Screen ---
+        # If the top of the monkey goes past the screen height, they fall into the abyss
+        if self.monkey.rect.top > SCREEN_HEIGHT:
+            self.game_over_reason = "fall"
+            self.game_active = False
+
+        # --- Update existing energy death check to track the reason ---
+        if self.monkey.energy <= 0:
+            self.monkey.energy = 0
+            self.game_over_reason = "energy" # Track that they ran out of energy
+            self.game_active = False
+
+    def draw_background(self):
+        top_color = (25, 20, 20)      # Dark ash charcoal
+        bottom_color = (70, 15, 5)    # Deep, smoky fire glow
+        
+        for y in range(SCREEN_HEIGHT):
+            t = y / SCREEN_HEIGHT
+            r = int(top_color[0] + (bottom_color[0] - top_color[0]) * t)
+            g = int(top_color[1] + (bottom_color[1] - top_color[1]) * t)
+            b = int(top_color[2] + (bottom_color[2] - top_color[2]) * t)
+            pygame.draw.line(self.screen, (r, g, b), (0, y), (SCREEN_WIDTH, y))
+
+    def draw_trees(self):
+        # We use a fixed seed based on positions so the trees don't randomly 
+        # shuffle around every frame, but stay fixed to the game world.
+        import random
+        random.seed(42) # Keeps the forest layout identical every frame
+
+        # Color Palette for burnt tree silhouettes
+        CHARCOAL = (20, 15, 15)
+        EMBER_RED = (90, 25, 10)
+
+        # Draw 15 trees spaced out across the level
+        # We account for the camera movement so they scroll naturally!
+        for i in range(15):
+            # Space trees out across the map width
+            base_x = i * 250 + random.randint(-50, 50)
+            # Apply the camera offset horizontally so they move with the world
+            tree_x = base_x + self.camera.camera.x
             
+            # Keep them anchored near the bottom half of the screen
+            tree_y = SCREEN_HEIGHT - 120 + random.randint(-20, 20)
+            tree_height = random.randint(80, 140)
+
+            # Only draw if the tree is actually visible on the screen
+            if -60 < tree_x < SCREEN_WIDTH + 60:
+                # 1. Draw the Main Trunk
+                pygame.draw.rect(self.screen, CHARCOAL, (tree_x, tree_y - tree_height, 12, tree_height))
+                
+                # 2. Draw a faint glowing orange outline on one side (heat reflection)
+                pygame.draw.line(self.screen, EMBER_RED, (tree_x + 12, tree_y - tree_height), (tree_x + 12, tree_y), 2)
+
+                # 3. Draw Jagged Branch Layers (Pine/Burnt Jungle style spikes)
+                current_y = tree_y - tree_height
+                branch_width = 20
+                while current_y < tree_y - 20:
+                    # Draw a triangle for the branches pointing upward/outward
+                    points = [
+                        (tree_x + 6, current_y - 15), # Top point
+                        (tree_x - branch_width, current_y + 15), # Bottom left
+                        (tree_x + 6 + branch_width, current_y + 15) # Bottom right
+                    ]
+                    pygame.draw.polygon(self.screen, CHARCOAL, points)
+                    
+                    current_y += 20
+                    branch_width += 6 # Branches get wider near the bottom
+
+        # Reset the random seed so it doesn't break your fire hazard particles!
+        random.seed()
 
     def draw_hud(self):
         # 1. Create the text string
@@ -151,14 +291,24 @@ class Game:
         # 3. Draw it on the screen at a specific position (top-left)
         self.screen.blit(score_surf, (20, 20))
         
-        # Optional: Add Energy display here too!
+        # Energy display
         energy_text = f"Energy: {int(self.monkey.energy)}%"
         energy_surf = self.font.render(energy_text, True, (0, 255, 0))
         self.screen.blit(energy_surf, (20, 60))
 
+        water_text = f"Water Ammo: {self.monkey.water_ammo}"
+        water_surf = self.font.render(water_text, True, (0, 191, 255))
+        self.screen.blit(water_surf, (20, 100))
+
     def display_game_over(self):
-        # 1. Create the text
-        msg = "Game Over! The monkey is too tired to continue."
+        # 1. Determine the message based on how the player lost
+        if self.game_over_reason == "fall":
+            msg = "Oops! The monkey fell out of the burning forest!"
+        elif self.game_over_reason == "energy":
+            msg = "Game Over! The monkey is too tired to continue."
+        else:
+            msg = "Game Over!" # Fallback default
+            
         restart_msg = "Press 'R' to try again"
         
         # 2. Render it
@@ -190,15 +340,34 @@ class Game:
                     # Restart logic
                     if not self.game_active and event.type == pygame.KEYDOWN:
                         if event.key == pygame.K_r:
-                            self.__init__() 
+                            # Re-initialize the whole game object to reset back to Level 1
+                            self.__init__()
+
+                    # Check for shooting action
+                    if self.game_active and event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_SPACE:
+                            if self.monkey.water_ammo > 0:
+                                # Spawn a water droplet at the monkey's center position
+                                from entities import WaterDroplet
+                                droplet = WaterDroplet(self.monkey.rect.centerx, self.monkey.rect.centery, self.monkey.facing_direction)
+                                self.water_group.add(droplet)
+                                
+                                # Deduct one shot
+                                self.monkey.water_ammo -= 1
 
                 if self.game_active:
                     self.monkey.update() 
                     self.player_group.update()
+                    self.hazard_group.update()
+                    self.water_group.update()
+                    self.golem_group.update(self.fireball_group) 
+                    self.fireball_group.update()
                     self.camera.update(self.monkey) 
                     self.check_collisions()
-            
-                self.screen.fill((50, 50, 50)) 
+
+                self.draw_background()
+
+                self.draw_trees()
 
                 # Draw world
                 for sprite in self.platform_group:
@@ -208,6 +377,16 @@ class Game:
                 for sprite in self.diamond_group:
                     self.screen.blit(sprite.image, self.camera.apply(sprite))
                 for sprite in self.hazard_group:
+                    self.screen.blit(sprite.image, self.camera.apply(sprite))
+
+                for sprite in self.golem_group:                  
+                    self.screen.blit(sprite.image, self.camera.apply(sprite))
+                for sprite in self.fireball_group:               
+                    self.screen.blit(sprite.image, self.camera.apply(sprite))
+
+                for sprite in self.water_gun_group:
+                    self.screen.blit(sprite.image, self.camera.apply(sprite))
+                for sprite in self.water_group:
                     self.screen.blit(sprite.image, self.camera.apply(sprite))
 
                 self.screen.blit(self.monkey.image, self.camera.apply(self.monkey))
