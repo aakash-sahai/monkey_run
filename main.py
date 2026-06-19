@@ -1,405 +1,313 @@
-from turtle import pos
-
-# In order to run on terminal paste this command: source venv/bin/activate
-# Then run: python3 main.py
+# main.py
 import pygame
 import sys
+import random
+import copy
 from settings import *
-from entities import Diamond, Food, Hazard, Player, Platform, WaterGunItem, Golem
+from entities import Button, GlitchedBackground
 
-class Camera:
-    def __init__(self, width, height):
-        self.camera = pygame.Rect(0, 0, width, height)
-        self.width = width
-        self.height = height
-
-    def apply(self, entity):
-        # This shifts the sprite's position on screen based on camera movement
-        return entity.rect.move(self.camera.topleft)
-
-    def update(self, target):
-        # Centers the camera on the monkey
-        x = -target.rect.centerx + int(SCREEN_WIDTH / 2)
-        y = -target.rect.centery + int(SCREEN_HEIGHT / 2)
-        
-        # Stops the camera at the edges of the map
-        x = min(0, x)
-        y = min(0, y)
-        x = max(-(self.width - SCREEN_WIDTH), x)
-        y = max(-(self.height - SCREEN_HEIGHT), y)
-        self.camera = pygame.Rect(x, y, self.width, self.height)
-
-class Game:
+class GameController:
     def __init__(self):
-        print("1. Init started")
         pygame.init()
+        pygame.font.init()
+        
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-        pygame.display.set_caption("Monkey Run: The Long Migration")
+        pygame.display.set_caption("Genre Shifter")
         self.clock = pygame.time.Clock()
-
-        pygame.font.init() 
-        self.font = pygame.font.SysFont('Arial', 30, bold=True)
-
-        # Track the active level index (0 = Level 1, 1 = Level 2)
-        self.current_level = 0
-        self.diamond_count = 0 
-        self.game_active = True
-        self.game_over_reason = ""
-
-        # Initialize Groups
-        self.hazard_group = pygame.sprite.Group() 
-        self.diamond_group = pygame.sprite.Group() 
-        self.food_group = pygame.sprite.Group()
-        self.platform_group = pygame.sprite.Group()
-        self.player_group = pygame.sprite.GroupSingle()
-        self.water_group = pygame.sprite.Group()
-        self.water_gun_group = pygame.sprite.Group()
-        self.golem_group = pygame.sprite.Group()
-        self.fireball_group = pygame.sprite.Group()
-
-        # Create the Player object
-        self.monkey = Player() 
-        self.player_group.add(self.monkey)
-
-        # Load the first level map layout
-        self.load_level()
-        print("4. Init finished successfully")
-
-    def load_level(self):
-        # Clear out all old sprites from the previous level
-        self.hazard_group.empty()
-        self.diamond_group.empty()
-        self.food_group.empty()
-        self.platform_group.empty()
-        self.water_group.empty()
-        self.water_gun_group.empty()
-        self.golem_group.empty()      
-        self.fireball_group.empty()
-
-        # Grab the specific map structure from our settings list
-        current_map_layout = LEVEL_MAPS[self.current_level]
-
-        # THE MASTER LOOP (Modified to read our new current_map_layout)
-        for row_index, row in enumerate(current_map_layout):
-            for col_index, cell in enumerate(row):
-                x = col_index * TILE_SIZE
-                y = row_index * TILE_SIZE
-            
-                if cell == 'X':
-                    self.platform_group.add(Platform(x, y, TILE_SIZE))
-                elif cell == 'H':
-                    self.hazard_group.add(Hazard(x, y))
-                elif cell == 'D':
-                    self.diamond_group.add(Diamond(x, y))
-                elif cell == 'F':
-                    self.food_group.add(Food(x, y))
-                elif cell == 'W':
-                    print(f"SPAWNING WATER GUN AT: {x}, {y}") 
-                    self.water_gun_group.add(WaterGunItem(x, y))
-                elif cell == 'G':
-                    print(f"SPAWNING GOLEM AT: {x}, {y}")
-                    self.golem_group.add(Golem(x, y - 6)) 
-                elif cell == 'P':
-                    self.monkey.rect.topleft = (x, y)
-                    self.monkey.direction.y = 0  
-                    if hasattr(self.monkey, 'pos_x'):
-                        self.monkey.pos_x = float(self.monkey.rect.x)
-                    if hasattr(self.monkey, 'pos_y'):
-                        self.monkey.pos_y = float(self.monkey.rect.y)
-
-        # Set up or recalculate the Camera boundaries for this level size
-        level_width = len(current_map_layout[0]) * TILE_SIZE
-        level_height = len(current_map_layout) * TILE_SIZE
-        self.camera = Camera(level_width, level_height)
         
-        # Reset monkey stats for the new level
-        self.monkey.energy = 100       
-        self.water_group.empty()       
-        self.game_active = True
-        print(f"4. Level {self.current_level + 1} loaded successfully")
-
-    def check_collisions(self):
-        # 1. Check if monkey hits anything in the food group
-        # The 'True' means the food disappears (kill) when touched
-        food_hit = pygame.sprite.spritecollide(self.player_group.sprite, self.food_group, False)
-        for food in food_hit:
-            food.kill() # Remove the food from the game
-
-        if food_hit:
-            print("Yum!")
-            self.monkey.energy += 20 # Boost energy!
-            if self.monkey.energy > 100:
-                self.monkey.energy = 100 # Cap it at 100
-
-        diamonds_hit = pygame.sprite.spritecollide(self.player_group.sprite, self.diamond_group, False)
-        for diamond in diamonds_hit:
-            print("Yay!")
-            self.diamond_count += 1
-            diamond.kill() # Remove the diamond from the game
-
-        if self.monkey.energy <= 0:
-            self.monkey.energy = 0
-            self.game_active = False
-
-        # --- Water Gun Item Pickup ---
-        gun_hit = pygame.sprite.spritecollide(self.player_group.sprite, self.water_gun_group, True)
-        if gun_hit:
-            print("Water gun equipped! 3 shots loaded.")
-            self.monkey.water_ammo += 3  # Add 3 shots per item collected
-
-        # --- Water Droplet Extinguishing Fire Hazards ---
-        # True, True means BOTH the water droplet and the fire hazard will get deleted on contact!
-        extinguish_hits = pygame.sprite.groupcollide(self.water_group, self.hazard_group, True, True)
-        if extinguish_hits:
-            print("Sizzle! Fire extinguished!")
-
-# --- Hazard Collision ---
-        if pygame.sprite.spritecollide(self.player_group.sprite, self.hazard_group, False):
-            print("Ouch!")
-            self.monkey.energy -= HAZARD_DAMAGE_RATE
-            
-            # Keep energy from going below zero
-            if self.monkey.energy < 0:
-                self.monkey.energy = 0
-
-    # --- Platform Collision (The Floor) ---
-        # 1. Check if the player sprite overlaps with any platform
-        hits = pygame.sprite.spritecollide(self.player_group.sprite, self.platform_group, False)
+        self.state = 'START_MENU'
+        self.selected_map = None
+        self.difficulty = "easy"
         
-        if hits:
-            #  moving DOWN (falling)
-            if self.monkey.direction.y > 0:
-                print("Nailed it!")              
-                # Snap the monkey's bottom to the platform's top
-                self.monkey.rect.bottom = hits[0].rect.top
-                
-                # 3. Reset physics so he stops falling
-                self.monkey.direction.y = 0
-                
-                # 4. CRITICAL: Sync the internal float position with the rect
-                self.monkey.pos_y = float(self.monkey.rect.y)     
-
-            # 2. BUMPING HEAD (Moving Up)
-            elif self.monkey.direction.y < 0:
-                print("Boink!") 
-                # Snap monkey's top to platform's bottom
-                self.monkey.rect.top = hits[0].rect.bottom
-                # Stop upward momentum (starts falling immediately)
-                self.monkey.direction.y = 0
-                self.monkey.pos_y = float(self.monkey.rect.y) 
-        if pygame.sprite.spritecollide(self.player_group.sprite, self.fireball_group, True):
-            print("Ouch! Hit by a fireball!")
-            self.monkey.energy -= 15  # Take damage from fireballs
-
-        # --- Water Droplet vs Fireball (Water puts out fire) ---
-        pygame.sprite.groupcollide(self.water_group, self.fireball_group, True, True)
+        self.lvl2_unlocked = False
+        self.lvl3_unlocked = False
         
-        # --- Check for Level Completion ---
-        # Calculate where the map ends horizontally
-        current_map_layout = LEVEL_MAPS[self.current_level]
-        level_right_edge = len(current_map_layout[0]) * TILE_SIZE
+        self.setup_menus()
+        self.reset_uttc()
+        self.glitched_bkg = GlitchedBackground(FPS)
 
-        if self.monkey.rect.right >= level_right_edge:
-            # Check if there is a next level BEFORE changing the counter
-            if self.current_level + 1 < len(LEVEL_MAPS):
-                self.current_level += 1
-                print(f"Heading into Level {self.current_level + 1}!")
-                self.load_level()
+    def reset_uttc(self):
+        self.current_symbol = "X" 
+        self.active_board = None  
+        self.mini_boards = [[[[None for _ in range(3)] for _ in range(3)] for _ in range(3)] for _ in range(3)]
+        self.big_board = [[None for _ in range(3)] for _ in range(3)]
+        self.game_winner = None
+
+    def setup_menus(self):
+        self.start_button = Button(
+            SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 25, 200, 50,
+            "START GAME", GREEN, BRIGHT_GREEN, lambda: self.change_state('MAP_SELECT')
+        )
+        
+        self.map_buttons = []
+        for i in range(1, 7):
+            row, col = (i - 1) // 3, (i - 1) % 3
+            x, y = 100 + (col * 200), 250 + (row * 150)
+            if i == 1:
+                btn = Button(x, y, 150, 80, f"Map {i}", GREEN, BRIGHT_GREEN, lambda m=i: self.select_map(m))
             else:
-                print("Victory! You completed the migration!")
-                self.game_active = False
+                btn = Button(x, y, 150, 80, "Locked", DARK_GRAY, RED, lambda: None)
+            self.map_buttons.append(btn)
+
+        self.back_button = Button(20, 20, 100, 40, "BACK", GRAY, WHITE, lambda: self.change_state('MAP_SELECT'))
+
+    def update_level_buttons(self):
+        self.level_buttons = []
+        self.level_buttons.append(Button(
+            SCREEN_WIDTH // 2 - 220, SCREEN_HEIGHT // 2, 130, 60, 
+            "Lvl 1 (Easy)", GREEN, BRIGHT_GREEN, lambda: self.start_game("easy")
+        ))
         
-        # --- Check if Monkey Fell Off the Screen ---
-        # If the top of the monkey goes past the screen height, they fall into the abyss
-        if self.monkey.rect.top > SCREEN_HEIGHT:
-            self.game_over_reason = "fall"
-            self.game_active = False
-
-        # --- Update existing energy death check to track the reason ---
-        if self.monkey.energy <= 0:
-            self.monkey.energy = 0
-            self.game_over_reason = "energy" # Track that they ran out of energy
-            self.game_active = False
-
-    def draw_background(self):
-        top_color = (25, 20, 20)      # Dark ash charcoal
-        bottom_color = (70, 15, 5)    # Deep, smoky fire glow
-        
-        for y in range(SCREEN_HEIGHT):
-            t = y / SCREEN_HEIGHT
-            r = int(top_color[0] + (bottom_color[0] - top_color[0]) * t)
-            g = int(top_color[1] + (bottom_color[1] - top_color[1]) * t)
-            b = int(top_color[2] + (bottom_color[2] - top_color[2]) * t)
-            pygame.draw.line(self.screen, (r, g, b), (0, y), (SCREEN_WIDTH, y))
-
-    def draw_trees(self):
-        # We use a fixed seed based on positions so the trees don't randomly 
-        # shuffle around every frame, but stay fixed to the game world.
-        import random
-        random.seed(42) # Keeps the forest layout identical every frame
-
-        # Color Palette for burnt tree silhouettes
-        CHARCOAL = (20, 15, 15)
-        EMBER_RED = (90, 25, 10)
-
-        # Draw 15 trees spaced out across the level
-        # We account for the camera movement so they scroll naturally!
-        for i in range(15):
-            # Space trees out across the map width
-            base_x = i * 250 + random.randint(-50, 50)
-            # Apply the camera offset horizontally so they move with the world
-            tree_x = base_x + self.camera.camera.x
-            
-            # Keep them anchored near the bottom half of the screen
-            tree_y = SCREEN_HEIGHT - 120 + random.randint(-20, 20)
-            tree_height = random.randint(80, 140)
-
-            # Only draw if the tree is actually visible on the screen
-            if -60 < tree_x < SCREEN_WIDTH + 60:
-                # 1. Draw the Main Trunk
-                pygame.draw.rect(self.screen, CHARCOAL, (tree_x, tree_y - tree_height, 12, tree_height))
-                
-                # 2. Draw a faint glowing orange outline on one side (heat reflection)
-                pygame.draw.line(self.screen, EMBER_RED, (tree_x + 12, tree_y - tree_height), (tree_x + 12, tree_y), 2)
-
-                # 3. Draw Jagged Branch Layers (Pine/Burnt Jungle style spikes)
-                current_y = tree_y - tree_height
-                branch_width = 20
-                while current_y < tree_y - 20:
-                    # Draw a triangle for the branches pointing upward/outward
-                    points = [
-                        (tree_x + 6, current_y - 15), # Top point
-                        (tree_x - branch_width, current_y + 15), # Bottom left
-                        (tree_x + 6 + branch_width, current_y + 15) # Bottom right
-                    ]
-                    pygame.draw.polygon(self.screen, CHARCOAL, points)
-                    
-                    current_y += 20
-                    branch_width += 6 # Branches get wider near the bottom
-
-        # Reset the random seed so it doesn't break your fire hazard particles!
-        random.seed()
-
-    def draw_hud(self):
-        # 1. Create the text string
-        score_text = f"Diamonds: {self.diamond_count}"
-        
-        # 2. Render the text into an image
-        # (Text, Antialias, Color)
-        score_surf = self.font.render(score_text, True, (255, 255, 255))
-        
-        # 3. Draw it on the screen at a specific position (top-left)
-        self.screen.blit(score_surf, (20, 20))
-        
-        # Energy display
-        energy_text = f"Energy: {int(self.monkey.energy)}%"
-        energy_surf = self.font.render(energy_text, True, (0, 255, 0))
-        self.screen.blit(energy_surf, (20, 60))
-
-        water_text = f"Water Ammo: {self.monkey.water_ammo}"
-        water_surf = self.font.render(water_text, True, (0, 191, 255))
-        self.screen.blit(water_surf, (20, 100))
-
-    def display_game_over(self):
-        # 1. Determine the message based on how the player lost
-        if self.game_over_reason == "fall":
-            msg = "Oops! The monkey fell out of the burning forest!"
-        elif self.game_over_reason == "energy":
-            msg = "Game Over! The monkey is too tired to continue."
+        if self.lvl2_unlocked:
+            self.level_buttons.append(Button(
+                SCREEN_WIDTH // 2 - 70, SCREEN_HEIGHT // 2, 130, 60, 
+                "Lvl 2 (Med)", GREEN, BRIGHT_GREEN, lambda: self.start_game("medium")
+            ))
         else:
-            msg = "Game Over!" # Fallback default
+            self.level_buttons.append(Button(
+                SCREEN_WIDTH // 2 - 70, SCREEN_HEIGHT // 2, 130, 60, 
+                "Locked", DARK_GRAY, RED, lambda: None
+            ))
             
-        restart_msg = "Press 'R' to try again"
-        
-        # 2. Render it
-        surf = self.font.render(msg, True, (255, 0, 0))
-        restart_surf = self.font.render(restart_msg, True, (255, 255, 255))
-        
-        # 3. Center it on the screen
-        rect = surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
-        restart_rect = restart_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 50))
-        
-        # 4. Draw a dark overlay to make it look "frozen"
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-        overlay.set_alpha(128) # Semi-transparent
-        overlay.fill((0, 0, 0))
-        self.screen.blit(overlay, (0,0))
-        
-        # 5. Draw the text boxes
-        self.screen.blit(surf, rect)
-        self.screen.blit(restart_surf, restart_rect)
+        if self.lvl3_unlocked:
+            self.level_buttons.append(Button(
+                SCREEN_WIDTH // 2 + 80, SCREEN_HEIGHT // 2, 130, 60, 
+                "Lvl 3 (Hard)", GREEN, BRIGHT_GREEN, lambda: self.start_game("hard")
+            ))
+        else:
+            self.level_buttons.append(Button(
+                SCREEN_WIDTH // 2 + 80, SCREEN_HEIGHT // 2, 130, 60, 
+                "Locked", DARK_GRAY, RED, lambda: None
+            ))
+
+    def change_state(self, new_state):
+        self.state = new_state
+        if new_state == 'PLAYING':
+            self.reset_uttc()
+        elif new_state == 'LEVEL_SELECT':
+            self.update_level_buttons()
+
+    def select_map(self, map_num):
+        self.selected_map = map_num
+        self.change_state('LEVEL_SELECT')
+
+    def start_game(self, diff):
+        self.difficulty = diff
+        self.change_state('PLAYING')
+
+    def check_win(self, board):
+        for row in board:
+            if row[0] and row[0] == row[1] == row[2]: return row[0]
+        for col in range(3):
+            if board[0][col] and board[0][col] == board[1][col] == board[2][col]: return board[0][col]
+        if board[0][0] and board[0][0] == board[1][1] == board[2][2]: return board[0][0]
+        if board[0][2] and board[0][2] == board[1][1] == board[2][0]: return board[0][2]
+        return None
+
+    def is_board_full(self, board):
+        return all(cell is not None for row in board for cell in row)
+
+    def get_valid_moves(self):
+        moves = []
+        if self.active_board is not None:
+            br, bc = self.active_board
+            for r in range(3):
+                for c in range(3):
+                    if self.mini_boards[br][bc][r][c] is None:
+                        moves.append((br, bc, r, c))
+        else:
+            for br in range(3):
+                for bc in range(3):
+                    if self.big_board[br][bc] is None:
+                        for r in range(3):
+                            for c in range(3):
+                                if self.mini_boards[br][bc][r][c] is None:
+                                    moves.append((br, bc, r, c))
+        return moves
+
+    def make_move(self, br, bc, r, c, symbol):
+        self.mini_boards[br][bc][r][c] = symbol
+        mini_winner = self.check_win(self.mini_boards[br][bc])
+        if mini_winner and self.big_board[br][bc] is None:
+            self.big_board[br][bc] = mini_winner
+            self.game_winner = self.check_win(self.big_board)
+            if self.game_winner == "X":
+                if self.difficulty == "easy":
+                    self.lvl2_unlocked = True
+                elif self.difficulty == "medium":
+                    self.lvl3_unlocked = True
+
+        if self.big_board[r][c] is not None or self.is_board_full(self.mini_boards[r][c]):
+            self.active_board = None
+        else:
+            self.active_board = (r, c)
+        self.current_symbol = "O" if symbol == "X" else "X"
+
+    def bot_move(self):
+        valid_moves = self.get_valid_moves()
+        if not valid_moves or self.game_winner:
+            return
+
+        if self.difficulty == "easy":
+            move = random.choice(valid_moves)
+        elif self.difficulty == "medium":
+            for br, bc, r, c in valid_moves:
+                temp_board = copy.deepcopy(self.mini_boards[br][bc])
+                temp_board[r][c] = "O"
+                if self.check_win(temp_board) == "O":
+                    self.make_move(br, bc, r, c, "O")
+                    return
+            for br, bc, r, c in valid_moves:
+                temp_board = copy.deepcopy(self.mini_boards[br][bc])
+                temp_board[r][c] = "X"
+                if self.check_win(temp_board) == "X":
+                    self.make_move(br, bc, r, c, "O")
+                    return
+            move = random.choice(valid_moves)
+        elif self.difficulty == "hard":
+            best_score = -1000
+            best_moves = [valid_moves[0]]
+            for br, bc, r, c in valid_moves:
+                score = 0
+                temp_board = [row[:] for row in self.mini_boards[br][bc]]
+                temp_board[r][c] = "O"
+                if self.check_win(temp_board) == "O": score += 15
+                temp_board[r][c] = "X"
+                if self.check_win(temp_board) == "X": score += 10
+                if r == 1 and c == 1: score += 3
+                if br == 1 and bc == 1: score += 2
+
+                if score > best_score:
+                    best_score = score
+                    best_moves = [(br, bc, r, c)]
+                elif score == best_score:
+                    best_moves.append((br, bc, r, c))
+            move = random.choice(best_moves)
+        self.make_move(*move, "O")
 
     def run(self):
-            print("5. Run loop entered")
-            while True:
-                for event in pygame.event.get():
-                    if event.type == pygame.QUIT:
-                        pygame.quit()
-                        sys.exit()
+        while True:
+            self.handle_events()
+            self.update()
+            self.draw()
+            self.clock.tick(FPS)
+
+    def handle_events(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if self.state == 'START_MENU':
+                self.start_button.handle_event(event)
+            elif self.state == 'MAP_SELECT':
+                for btn in self.map_buttons: btn.handle_event(event)
+            elif self.state == 'LEVEL_SELECT':
+                for btn in self.level_buttons: btn.handle_event(event)
+            elif self.state == 'PLAYING':
+                self.back_button.handle_event(event)
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self.current_symbol == "X" and not self.game_winner:
+                    mx, my = event.pos
+                    self.handle_board_clicks(mx, my)
+
+    def handle_board_clicks(self, mx, my):
+        start_x, start_y = 175, 120
+        big_dim, small_dim, pad = 140, 40, 10
+        for br in range(3):
+            for bc in range(3):
+                bx = start_x + bc * (big_dim + pad)
+                by = start_y + br * (big_dim + pad)
+                if pygame.Rect(bx, by, big_dim, big_dim).collidepoint(mx, my):
+                    if self.active_board is not None and (br, bc) != self.active_board: return
+                    if self.big_board[br][bc] is not None: return
+                    for r in range(3):
+                        for c in range(3):
+                            sx = bx + c * small_dim + 10
+                            sy = by + r * small_dim + 10
+                            if pygame.Rect(sx, sy, small_dim-4, small_dim-4).collidepoint(mx, my):
+                                if self.mini_boards[br][bc][r][c] is None:
+                                    self.make_move(br, bc, r, c, "X")
+
+    def update(self):
+        self.glitched_bkg.update()
+        if self.state == 'PLAYING' and self.current_symbol == "O" and not self.game_winner:
+            pygame.time.delay(400) 
+            self.bot_move()
+
+    def draw(self):
+        self.glitched_bkg.draw(self.screen)
+        font = pygame.font.Font(None, 45)
+        
+        if self.state == 'START_MENU':
+            text = font.render("GENRE SHIFTER", True, WHITE)
+            self.screen.blit(text, text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 4)))
+            self.start_button.draw(self.screen)
+        elif self.state == 'MAP_SELECT':
+            overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+            overlay.fill(BLACK)
+            overlay.set_alpha(100)
+            self.screen.blit(overlay, (0,0))
+            text = font.render("SELECT A MAP", True, WHITE)
+            self.screen.blit(text, text.get_rect(center=(SCREEN_WIDTH // 2, 100)))
+            for btn in self.map_buttons: btn.draw(self.screen)
+        elif self.state == 'LEVEL_SELECT':
+            overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+            overlay.fill(BLACK)
+            overlay.set_alpha(100)
+            self.screen.blit(overlay, (0,0))
+            text = font.render(f"MAP {self.selected_map}: SELECT DIFFICULTY", True, WHITE)
+            self.screen.blit(text, text.get_rect(center=(SCREEN_WIDTH // 2, 100)))
+            for btn in self.level_buttons: btn.draw(self.screen)
+        elif self.state == 'PLAYING':
+            self.draw_game_play()
+        pygame.display.flip()
+
+    def draw_game_play(self):
+        font = pygame.font.Font(None, 32)
+        info_str = f"Difficulty: {self.difficulty.upper()} | Turn: {self.current_symbol}"
+        if self.game_winner:
+            info_str = f"GAME OVER! WINNER: {self.game_winner}"
+            
+        text = font.render(info_str, True, WHITE)
+        self.screen.blit(text, text.get_rect(center=(SCREEN_WIDTH // 2, 50)))
+        self.back_button.draw(self.screen)
+        
+        start_x, start_y = 175, 120
+        big_dim, small_dim, pad = 140, 40, 10
+        
+        for br in range(3):
+            for bc in range(3):
+                bx = start_x + bc * (big_dim + pad)
+                by = start_y + br * (big_dim + pad)
                 
-                    # Restart logic
-                    if not self.game_active and event.type == pygame.KEYDOWN:
-                        if event.key == pygame.K_r:
-                            # Re-initialize the whole game object to reset back to Level 1
-                            self.__init__()
+                bg_color = DARK_GRAY
+                if self.big_board[br][bc] is not None: bg_color = BLACK
+                elif self.active_board is None: bg_color = GRAY
+                elif (br, bc) == self.active_board: bg_color = YELLOW
+                    
+                pygame.draw.rect(self.screen, bg_color, (bx, by, big_dim, big_dim))
+                pygame.draw.rect(self.screen, RED, (bx, by, big_dim, big_dim), 3)
+                
+                for r in range(3):
+                    for c in range(3):
+                        sx = bx + c * small_dim + 10
+                        sy = by + r * small_dim + 10
+                        pygame.draw.rect(self.screen, WHITE, (sx, sy, small_dim-4, small_dim-4))
+                        
+                        val = self.mini_boards[br][bc][r][c]
+                        if val == "X":
+                            pygame.draw.line(self.screen, CYAN, (sx+6, sy+6), (sx+small_dim-10, sy+small_dim-10), 3)
+                            pygame.draw.line(self.screen, CYAN, (sx+6, sy+small_dim-10), (sx+small_dim-10, sy+6), 3)
+                        elif val == "O":
+                            pygame.draw.circle(self.screen, MAGENTA, (sx + small_dim//2 - 2, sy + small_dim//2 - 2), 12, 3)
 
-                    # Check for shooting action
-                    if self.game_active and event.type == pygame.KEYDOWN:
-                        if event.key == pygame.K_SPACE:
-                            if self.monkey.water_ammo > 0:
-                                # Spawn a water droplet at the monkey's center position
-                                from entities import WaterDroplet
-                                droplet = WaterDroplet(self.monkey.rect.centerx, self.monkey.rect.centery, self.monkey.facing_direction)
-                                self.water_group.add(droplet)
-                                
-                                # Deduct one shot
-                                self.monkey.water_ammo -= 1
-
-                if self.game_active:
-                    self.monkey.update() 
-                    self.player_group.update()
-                    self.hazard_group.update()
-                    self.water_group.update()
-                    self.golem_group.update(self.fireball_group) 
-                    self.fireball_group.update()
-                    self.camera.update(self.monkey) 
-                    self.check_collisions()
-
-                self.draw_background()
-
-                self.draw_trees()
-
-                # Draw world
-                for sprite in self.platform_group:
-                    self.screen.blit(sprite.image, self.camera.apply(sprite))
-                for sprite in self.food_group:
-                    self.screen.blit(sprite.image, self.camera.apply(sprite))
-                for sprite in self.diamond_group:
-                    self.screen.blit(sprite.image, self.camera.apply(sprite))
-                for sprite in self.hazard_group:
-                    self.screen.blit(sprite.image, self.camera.apply(sprite))
-
-                for sprite in self.golem_group:                  
-                    self.screen.blit(sprite.image, self.camera.apply(sprite))
-                for sprite in self.fireball_group:               
-                    self.screen.blit(sprite.image, self.camera.apply(sprite))
-
-                for sprite in self.water_gun_group:
-                    self.screen.blit(sprite.image, self.camera.apply(sprite))
-                for sprite in self.water_group:
-                    self.screen.blit(sprite.image, self.camera.apply(sprite))
-
-                self.screen.blit(self.monkey.image, self.camera.apply(self.monkey))
-                self.draw_hud()
-
-                # Game Over Overlay
-                if not self.game_active:
-                    self.display_game_over()
-
-                pygame.display.update()
-                self.clock.tick(60)
+                if self.big_board[br][bc] is not None:
+                    b_win = self.big_board[br][bc]
+                    if b_win == "X":
+                        pygame.draw.line(self.screen, CYAN, (bx+15, by+15), (bx+big_dim-15, by+big_dim-15), 10)
+                        pygame.draw.line(self.screen, CYAN, (bx+15, by+big_dim-15), (bx+big_dim-15, by+15), 10)
+                    elif b_win == "O":
+                        pygame.draw.circle(self.screen, MAGENTA, (bx + big_dim//2, by + big_dim//2), big_dim//2 - 15, 10)
 
 if __name__ == "__main__":
-    print ("Main")
-    game = Game()
+    game = GameController()
     game.run()
